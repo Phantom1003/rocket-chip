@@ -443,6 +443,16 @@ class CSRFile(
   val reg_hpmcounter = io.counters.zipWithIndex.map { case (c, i) =>
     WideCounter(CSR.hpmWidth, c.inc, reset = false, inhibit = reg_mcountinhibit(CSR.firstHPM+i)) }
 
+  /* Pointer Encryption Extension */
+  val reg_mcrmkeyl = Reg(UInt(width = xLen))
+  val reg_mcrmkeyh = Reg(UInt(width = xLen))
+  val reg_scrtkeyl = Reg(UInt(width = xLen))
+  val reg_scrtkeyh = Reg(UInt(width = xLen))
+  val reg_scrakeyl = Reg(UInt(width = xLen))
+  val reg_scrakeyh = Reg(UInt(width = xLen))
+  val reg_scrbkeyl = Reg(UInt(width = xLen))
+  val reg_scrbkeyh = Reg(UInt(width = xLen))
+
   val mip = Wire(init=reg_mip)
   mip.lip := (io.interrupts.lip: Seq[Bool])
   mip.mtip := io.interrupts.mtip
@@ -621,6 +631,18 @@ class CSRFile(
       read_mapping += (CSRs.pmpaddr0 + i) -> pmp.readAddr
   }
 
+
+  /* Pointer Encryption Extension */
+  read_mapping += CSRs.mcrmkeyl -> reg_mcrmkeyl
+  read_mapping += CSRs.mcrmkeyh -> reg_mcrmkeyh
+  read_mapping += CSRs.scrtkeyl -> reg_scrtkeyl
+  read_mapping += CSRs.scrtkeyh -> reg_scrtkeyh
+  read_mapping += CSRs.scrakeyl -> reg_scrakeyl
+  read_mapping += CSRs.scrakeyh -> reg_scrakeyh
+  read_mapping += CSRs.scrbkeyl -> reg_scrbkeyl
+  read_mapping += CSRs.scrbkeyh -> reg_scrbkeyh
+
+
   // implementation-defined CSRs
   val reg_custom = customCSRs.map { csr =>
     require(csr.mask >= 0 && csr.mask.bitLength <= xLen)
@@ -668,8 +690,7 @@ class CSRFile(
     io_dec.vector_illegal := io.status.vs === 0 || !reg_misa('v'-'a')
     io_dec.fp_csr := decodeFast(fp_csrs.keys.toList)
     io_dec.rocc_illegal := io.status.xs === 0 || !reg_misa('x'-'a')
-    io_dec.read_illegal := reg_mstatus.prv < io_dec.csr(9,8) ||
-      !decodeAny(read_mapping) ||
+    io_dec.read_illegal := !decodeAny(read_mapping) ||
       io_dec.csr === CSRs.satp && !allow_sfence_vma ||
       (io_dec.csr.inRange(CSR.firstCtr, CSR.firstCtr + CSR.nCtr) || io_dec.csr.inRange(CSR.firstCtrH, CSR.firstCtrH + CSR.nCtr)) && !allow_counter ||
       decodeFast(debug_csrs.keys.toList) && !reg_debug ||
@@ -1081,6 +1102,17 @@ class CSRFile(
         pmp.addr := wdata
       }
     }
+
+    /* Pointer Encryption Extension */
+    when (decoded_addr(CSRs.mcrmkeyl)) { reg_mcrmkeyl := wdata }
+    when (decoded_addr(CSRs.mcrmkeyh)) { reg_mcrmkeyh := wdata }
+    when (decoded_addr(CSRs.scrtkeyl)) { reg_scrtkeyl := wdata }
+    when (decoded_addr(CSRs.scrtkeyh)) { reg_scrtkeyh := wdata }
+    when (decoded_addr(CSRs.scrakeyl)) { reg_scrakeyl := wdata }
+    when (decoded_addr(CSRs.scrakeyh)) { reg_scrakeyh := wdata }
+    when (decoded_addr(CSRs.scrbkeyl)) { reg_scrbkeyl := wdata }
+    when (decoded_addr(CSRs.scrbkeyh)) { reg_scrbkeyh := wdata }
+
     for ((io, csr, reg) <- (io.customCSRs, customCSRs, reg_custom).zipped) {
       val mask = csr.mask.U(xLen.W)
       when (decoded_addr(csr.id)) {

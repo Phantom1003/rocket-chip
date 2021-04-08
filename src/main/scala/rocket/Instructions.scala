@@ -1164,6 +1164,17 @@ object CSRs {
   val mhpmcounter29h = 0xb9d
   val mhpmcounter30h = 0xb9e
   val mhpmcounter31h = 0xb9f
+
+  /* Pointer Encryption Extension */
+  val mcrmkeyl = 0x7f0
+  val mcrmkeyh = 0x7f1
+  val scrtkeyl = 0x5f0
+  val scrtkeyh = 0x5f1
+  val scrakeyl = 0x5f2
+  val scrakeyh = 0x5f3
+  val scrbkeyl = 0x5f4
+  val scrbkeyh = 0x5f5
+
   val all = {
     val res = collection.mutable.ArrayBuffer[Int]()
     res += fflags
@@ -1362,6 +1373,17 @@ object CSRs {
     res += marchid
     res += mimpid
     res += mhartid
+
+    /* Pointer Encryption Extension */
+    res += mcrmkeyl
+    res += mcrmkeyh
+    res += scrtkeyl
+    res += scrtkeyh
+    res += scrakeyl
+    res += scrakeyh
+    res += scrbkeyl
+    res += scrbkeyh
+    
     res.toArray
   }
   val all32 = {
