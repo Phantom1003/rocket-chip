@@ -786,8 +786,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     id_do_fence ||
     csr.io.csr_stall ||
     id_reg_pause ||
-    io.traceStall ||
-    id_ctrl.scie && mem_scie_pipelined // @note stall at id
+    io.traceStall
+    // id_ctrl.scie && mem_scie_pipelined // @note stall at id
   ctrl_killd := !ibuf.io.inst(0).valid || ibuf.io.inst(0).bits.replay || take_pc_mem_wb || ctrl_stalld || csr.io.interrupt
 
   io.imem.req.valid := take_pc
