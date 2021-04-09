@@ -395,15 +395,19 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     u.io.rs2 := ex_rs(1)
     u.io.rd
   }
-  val mem_scie_pipelined_wdata = if (!rocketParams.useSCIE) 0.U else {
-    val u = Module(new SCIEPipelined(xLen))
-    u.io.clock := Module.clock
-    u.io.valid := ex_reg_valid && ex_scie_pipelined
-    u.io.insn := ex_reg_inst
-    u.io.rs1 := ex_rs(0)
-    u.io.rs2 := ex_rs(1)
-    u.io.rd
-  }
+  val (mem_scie_pipelined_wdata, // @note instance pipelined scie
+       mem_scie_pipelined_valid, 
+       mem_scie_pipelined_done) = 
+          if (!rocketParams.useSCIE) (0.U, true.B, true.B)
+          else {
+            val u = Module(new SCIEPipelined(xLen))
+            u.io.clock := Module.clock
+            u.io.valid := ex_reg_valid && ex_scie_pipelined
+            u.io.insn := ex_reg_inst
+            u.io.rs1 := ex_rs(0)
+            u.io.rs2 := ex_rs(1)
+            (u.io.rd, u.io.valid, u.io.done)
+          }
 
   // multiplier and divider
   val div = Module(new MulDiv(if (pipelinedMul) mulDivParams.copy(mulUnroll = 0) else mulDivParams, width = xLen))
@@ -493,7 +497,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
                              ex_ctrl.div && !div.io.req.ready
   val replay_ex_load_use = wb_dcache_miss && ex_reg_load_use
   val replay_ex = ex_reg_replay || (ex_reg_valid && (replay_ex_structural || replay_ex_load_use))
-  val ctrl_killx = take_pc_mem_wb || replay_ex || !ex_reg_valid
+
+  // @note stall at mem
+  val ctrl_killx = take_pc_mem_wb || replay_ex || !ex_reg_valid || (mem_scie_pipelined && !mem_scie_pipelined_done) 
   // detect 2-cycle load-use delay for LB/LH/SC
   val ex_slow_bypass = ex_ctrl.mem_cmd === M_XSC || ex_reg_mem_size < 2
   val ex_sfence = Bool(usingVM) && ex_ctrl.mem && ex_ctrl.mem_cmd === M_SFENCE
@@ -531,7 +537,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   // will drive the W-stage npc mux
   when (mem_reg_valid && mem_reg_flush_pipe) {
     mem_reg_sfence := false
-  }.elsewhen (ex_pc_valid) {
+  }.elsewhen (ex_pc_valid) {  // @note exe to mem
     mem_ctrl := ex_ctrl
     mem_scie_unpipelined := ex_scie_unpipelined
     mem_scie_pipelined := ex_scie_pipelined
@@ -593,7 +599,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   wb_reg_replay := replay_mem && !take_pc_wb
   wb_reg_xcpt := mem_xcpt && !take_pc_wb
   wb_reg_flush_pipe := !ctrl_killm && mem_reg_flush_pipe
-  when (mem_pc_valid) {
+  when (mem_pc_valid) {   // @note mem to wb
     wb_ctrl := mem_ctrl
     wb_reg_sfence := mem_reg_sfence
     wb_reg_wdata := Mux(mem_scie_pipelined, mem_scie_pipelined_wdata,
@@ -780,7 +786,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     id_do_fence ||
     csr.io.csr_stall ||
     id_reg_pause ||
-    io.traceStall
+    io.traceStall ||
+    id_ctrl.scie && mem_scie_pipelined // @note stall at id
   ctrl_killd := !ibuf.io.inst(0).valid || ibuf.io.inst(0).bits.replay || take_pc_mem_wb || ctrl_stalld || csr.io.interrupt
 
   io.imem.req.valid := take_pc
