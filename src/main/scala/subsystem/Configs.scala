@@ -89,7 +89,9 @@ class WithNBigCores(n: Int, overrideIdOffset: Option[Int] = None) extends Config
     val prev = up(RocketTilesKey, site)
     val idOffset = overrideIdOffset.getOrElse(prev.size)
     val big = RocketTileParams(
-      core   = RocketCoreParams(mulDiv = Some(MulDivParams(
+      core   = RocketCoreParams(
+        useSCIE = true,
+        mulDiv = Some(MulDivParams(
         mulUnroll = 8,
         mulEarlyOut = true,
         divEarlyOut = true))),

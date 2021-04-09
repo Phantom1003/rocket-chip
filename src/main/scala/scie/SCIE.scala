@@ -3,11 +3,23 @@
 package freechips.rocketchip.scie
 
 import chisel3._
-import chisel3.util.{BitPat, HasBlackBoxInline}
-import chisel3.experimental.fromIntToIntParam
+import chisel3.util._
+
+/* Pointer Encryption Extension
+ *          31    5 4  20  9   5 4 2 11  7 6     0
+ *          |     | |   |  |   | | | |   | |     |
+ * cretk    0000000 .....  ..... 000 ..... 1101011
+ * crdtk    0000001 .....  ..... 000 ..... 1101011
+ * cremk    0000000 .....  ..... 001 ..... 1101011
+ * crdmk    0000001 .....  ..... 001 ..... 1101011
+ * creak    0000000 .....  ..... 010 ..... 1101011
+ * crdak    0000001 .....  ..... 010 ..... 1101011
+ * crebk    0000000 .....  ..... 011 ..... 1101011
+ * crdbk    0000001 .....  ..... 011 ..... 1101011
+ */
 
 object SCIE {
-  val opcode = BitPat("b?????????????????????????0?01011")
+  val opcode = BitPat("b?????????????????????????1101011")
   val iLen = 32
 }
 
@@ -18,38 +30,12 @@ class SCIEDecoderInterface extends Bundle {
   val multicycle = Output(Bool())
 }
 
-class SCIEDecoder extends BlackBox with HasBlackBoxInline {
+class SCIEDecoder extends Module {
   val io = IO(new SCIEDecoderInterface)
 
-  setInline("SCIEDecoder.v",
-    s"""
-      |module SCIEDecoder (
-      |    input  [${SCIE.iLen-1}:0] insn,
-      |    output unpipelined,
-      |    output pipelined,
-      |    output multicycle);
-      |
-      |  /* This module decodes a SCIE instruction and indicates which functional unit
-      |     to send the instruction to (unpipelined, pipelined, or multicycle).  The
-      |     outputs are don't-cares unless insn lies within the custom-0 or custom-1
-      |     major opcodes.  If it is within custom-0 or custom-1, then at most one of
-      |     the outputs may be high.  If none are high, an illegal-instruction trap
-      |     occurs.  If multiple are high, the behavior is undefined.
-      |
-      |     This example implementation permits Funct3 = 0 or 1 within both custom-0
-      |     and custom-1 as Unpipelined instructions.
-      |
-      |     It also permits Funct3 = 2 or 3 within custom-0 as Pipelined instructions.
-      |  */
-      |
-      |  wire [2:0] funct3 = insn[14:12];
-      |
-      |  assign unpipelined = funct3 <= 3'h1;
-      |  assign pipelined = funct3 == 3'h2 || funct3 == 3'h3;
-      |  assign multicycle = 1'b0;
-      |
-      |endmodule
-     """.stripMargin)
+  io.unpipelined  := true.B
+  io.pipelined    := false.B
+  io.multicycle   := false.B
 }
 
 class SCIEUnpipelinedInterface(xLen: Int) extends Bundle {
@@ -59,46 +45,50 @@ class SCIEUnpipelinedInterface(xLen: Int) extends Bundle {
   val rd = Output(UInt(xLen.W))
 }
 
-class SCIEUnpipelined(xLen: Int) extends BlackBox(Map("XLEN" -> xLen)) with HasBlackBoxInline {
+class SCIEUnpipelined(xLen: Int) extends Module {
   val io = IO(new SCIEUnpipelinedInterface(xLen))
 
-  setInline("SCIEUnpipelined.v",
-    s"""
-      |module SCIEUnpipelined #(parameter XLEN = 32) (
-      |    input  [${SCIE.iLen-1}:0] insn,
-      |    input  [XLEN-1:0] rs1,
-      |    input  [XLEN-1:0] rs2,
-      |    output [XLEN-1:0] rd);
-      |
-      |  /* This example SCIE implementation provides the following instructions:
-      |
-      |     Major opcode custom-0:
-      |     Funct3 = 0: MIN (rd = rs1 < rs2 ? rs1 : rs2)
-      |     Funct3 = 1: MAX (rd = rs1 > rs2 ? rs1 : rs2)
-      |
-      |     Major opcode custom-1:
-      |     Funct3 = 0: MINI (rd = rs1 < imm[11:0] ? rs1 : imm[11:0])
-      |     Funct3 = 1: MAXI (rd = rs1 > imm[11:0] ? rs1 : imm[11:0])
-      |  */
-      |
-      |  /* Decode the instruction. */
-      |  wire use_immediate = insn[5];
-      |  wire pick_smaller = !insn[12];
-      |
-      |  /* Mux the operands. */
-      |  wire [XLEN-1:0] immediate = {{(XLEN-12){insn[31]}},  insn[31:20]};
-      |  wire [XLEN-1:0] rhs = use_immediate ? immediate : rs2;
-      |  wire [XLEN-1:0] lhs = rs1;
-      |
-      |  /* Perform the computation. */
-      |  wire lhs_smaller = $$signed(lhs) < $$signed(rhs);
-      |  wire [XLEN-1:0] result = lhs_smaller == pick_smaller ? lhs : rhs;
-      |
-      |  /* Drive the output. */
-      |  assign rd = result;
-      |
-      |endmodule
-     """.stripMargin)
+  import chisel3.util.experimental.BoringUtils
+  val csr_mcrmkeyl = WireInit(0.U(xLen.W))
+  val csr_mcrmkeyh = WireInit(0.U(xLen.W))
+  val csr_scrtkeyl = WireInit(0.U(xLen.W))
+  val csr_scrtkeyh = WireInit(0.U(xLen.W))
+  val csr_scrakeyl = WireInit(0.U(xLen.W))
+  val csr_scrakeyh = WireInit(0.U(xLen.W))
+  val csr_scrbkeyl = WireInit(0.U(xLen.W))
+  val csr_scrbkeyh = WireInit(0.U(xLen.W))
+  BoringUtils.addSink(csr_mcrmkeyl, "csr_mcrmkeyl")
+  BoringUtils.addSink(csr_mcrmkeyh, "csr_mcrmkeyh")
+  BoringUtils.addSink(csr_scrtkeyl, "csr_scrtkeyl")
+  BoringUtils.addSink(csr_scrtkeyh, "csr_scrtkeyh")
+  BoringUtils.addSink(csr_scrakeyl, "csr_scrakeyl")
+  BoringUtils.addSink(csr_scrakeyh, "csr_scrakeyh")
+  BoringUtils.addSink(csr_scrbkeyl, "csr_scrbkeyl")
+  BoringUtils.addSink(csr_scrbkeyh, "csr_scrbkeyh")
+
+  val pec_engine = Module(new Qarma.SingleCycle.QarmaEngine(max_round = 7))
+  pec_engine.input.bits.text := io.rs1
+  pec_engine.input.bits.tweak := io.rs2
+  pec_engine.input.bits.actual_round := 7.U(3.W)
+  pec_engine.input.bits.encrypt := ~io.insn(25)
+  pec_engine.output.ready := true.B
+  val key_sel = io.insn(14, 12)
+  pec_engine.input.valid := true.B
+
+  pec_engine.input.bits.keyh := MuxLookup(key_sel, csr_scrtkeyh, Seq(
+    "b000".U -> csr_scrtkeyh,
+    "b001".U -> csr_mcrmkeyh,
+    "b010".U -> csr_scrakeyh,
+    "b011".U -> csr_scrbkeyh
+  ))
+  pec_engine.input.bits.keyl := MuxLookup(key_sel, csr_scrtkeyl, Seq(
+    "b000".U -> csr_scrtkeyl,
+    "b001".U -> csr_mcrmkeyl,
+    "b010".U -> csr_scrakeyl,
+    "b011".U -> csr_scrbkeyl
+  ))
+
+  io.rd := pec_engine.output.bits.result
 }
 
 class SCIEPipelinedInterface(xLen: Int) extends Bundle {
