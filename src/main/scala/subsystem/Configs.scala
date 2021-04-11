@@ -406,7 +406,7 @@ class WithDefaultMemPort extends Config((site, here, up) => {
                       base = x"8000_0000",
                       size = x"1000_0000",
                       beatBytes = site(MemoryBusKey).beatBytes,
-                      idBits = 4), 1))
+                      idBits = 0 /*4*/), 1))
 })
 
 class WithNoMemPort extends Config((site, here, up) => {
@@ -418,7 +418,7 @@ class WithDefaultMMIOPort extends Config((site, here, up) => {
                       base = x"1000_0000",
                       size = x"2000_0000",
                       beatBytes = site(MemoryBusKey).beatBytes,
-                      idBits = 4))
+                      idBits = 0 /*4*/))
 })
 
 class WithNoMMIOPort extends Config((site, here, up) => {
