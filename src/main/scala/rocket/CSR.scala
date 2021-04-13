@@ -444,14 +444,24 @@ class CSRFile(
     WideCounter(CSR.hpmWidth, c.inc, reset = false, inhibit = reg_mcountinhibit(CSR.firstHPM+i)) }
 
   /* Pointer Encryption Extension */
-  val reg_mcrmkeyl = Reg(UInt(width = xLen))
-  val reg_mcrmkeyh = Reg(UInt(width = xLen))
-  val reg_scrtkeyl = Reg(UInt(width = xLen))
-  val reg_scrtkeyh = Reg(UInt(width = xLen))
-  val reg_scrakeyl = Reg(UInt(width = xLen))
-  val reg_scrakeyh = Reg(UInt(width = xLen))
-  val reg_scrbkeyl = Reg(UInt(width = xLen))
-  val reg_scrbkeyh = Reg(UInt(width = xLen))
+  val reg_mcrmkeyl = RegInit(0.U(xLen.W))
+  val reg_mcrmkeyh = RegInit(0.U(xLen.W))
+  val reg_scrtkeyl = RegInit(0.U(xLen.W))
+  val reg_scrtkeyh = RegInit(0.U(xLen.W))
+  val reg_scrakeyl = RegInit(0.U(xLen.W))
+  val reg_scrakeyh = RegInit(0.U(xLen.W))
+  val reg_scrbkeyl = RegInit(0.U(xLen.W))
+  val reg_scrbkeyh = RegInit(0.U(xLen.W))
+
+  import chisel3.util.experimental.BoringUtils
+  BoringUtils.addSource(reg_mcrmkeyl, "csr_mcrmkeyl")
+  BoringUtils.addSource(reg_mcrmkeyh, "csr_mcrmkeyh")
+  BoringUtils.addSource(reg_scrtkeyl, "csr_scrtkeyl")
+  BoringUtils.addSource(reg_scrtkeyh, "csr_scrtkeyh")
+  BoringUtils.addSource(reg_scrakeyl, "csr_scrakeyl")
+  BoringUtils.addSource(reg_scrakeyh, "csr_scrakeyh")
+  BoringUtils.addSource(reg_scrbkeyl, "csr_scrbkeyl")
+  BoringUtils.addSource(reg_scrbkeyh, "csr_scrbkeyh")
 
   val mip = Wire(init=reg_mip)
   mip.lip := (io.interrupts.lip: Seq[Bool])
@@ -689,7 +699,7 @@ class CSRFile(
     io_dec.fp_illegal := io.status.fs === 0 || !reg_misa('f'-'a')
     io_dec.vector_illegal := io.status.vs === 0 || !reg_misa('v'-'a')
     io_dec.fp_csr := decodeFast(fp_csrs.keys.toList)
-    io_dec.rocc_illegal := io.status.xs === 0 || !reg_misa('x'-'a')
+    io_dec.rocc_illegal := false.B // io.status.xs === 0 || !reg_misa('x'-'a')
     io_dec.read_illegal := !decodeAny(read_mapping) ||
       io_dec.csr === CSRs.satp && !allow_sfence_vma ||
       (io_dec.csr.inRange(CSR.firstCtr, CSR.firstCtr + CSR.nCtr) || io_dec.csr.inRange(CSR.firstCtrH, CSR.firstCtrH + CSR.nCtr)) && !allow_counter ||
