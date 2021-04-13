@@ -20,4 +20,4 @@ emulator/hello*
 .bloop/
 project/metals.sbt
 project/project/
-.sbtopts
+log*
