@@ -298,6 +298,7 @@ trait QarmaParamsIO extends MultiIOModule with QarmaParams {
     val tweak = UInt(64.W)
     val text = UInt(64.W)
     val actual_round = UInt(3.W)
+    val kill = Bool()
   })))
   val output = IO(Decoupled(new Bundle {
     val result = UInt(64.W)

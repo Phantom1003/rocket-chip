@@ -388,12 +388,15 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   alu.io.in2 := ex_op2.asUInt
   alu.io.in1 := ex_op1.asUInt
 
-  val ex_scie_unpipelined_wdata = if (!rocketParams.useSCIE) 0.U else {
+  val kill_qarma = Wire(Bool())
+  val (ex_scie_unpipelined_wdata, ex_scie_unpipelined_ready) = if (!rocketParams.useSCIE) (0.U, true.B) else {
     val u = Module(new SCIEUnpipelined(xLen))
+    u.io.valid := ex_scie_unpipelined && ex_reg_valid
+    u.io.kill := kill_qarma
     u.io.insn := ex_reg_inst
     u.io.rs1 := ex_rs(0)
     u.io.rs2 := ex_rs(1)
-    u.io.rd
+    (u.io.rd, u.io.ready)
   }
   val (mem_scie_pipelined_wdata, // @note instance pipelined scie
        mem_scie_pipelined_valid, 
@@ -494,12 +497,14 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val ex_pc_valid = ex_reg_valid || ex_reg_replay || ex_reg_xcpt_interrupt
   val wb_dcache_miss = wb_ctrl.mem && !io.dmem.resp.valid
   val replay_ex_structural = ex_ctrl.mem && !io.dmem.req.ready ||
-                             ex_ctrl.div && !div.io.req.ready
+                             ex_ctrl.div && !div.io.req.ready ||
+                             ex_scie_unpipelined && !ex_scie_unpipelined_ready
   val replay_ex_load_use = wb_dcache_miss && ex_reg_load_use
   val replay_ex = ex_reg_replay || (ex_reg_valid && (replay_ex_structural || replay_ex_load_use))
 
   // @note stall at mem
-  val ctrl_killx = take_pc_mem_wb || replay_ex || !ex_reg_valid || (mem_scie_pipelined && !mem_scie_pipelined_done) 
+  kill_qarma := false.B//take_pc_mem_wb || ex_reg_replay || (ex_reg_valid && replay_ex_load_use) || !ex_reg_valid
+  val ctrl_killx = take_pc_mem_wb || replay_ex || !ex_reg_valid
   // detect 2-cycle load-use delay for LB/LH/SC
   val ex_slow_bypass = ex_ctrl.mem_cmd === M_XSC || ex_reg_mem_size < 2
   val ex_sfence = Bool(usingVM) && ex_ctrl.mem && ex_ctrl.mem_cmd === M_SFENCE

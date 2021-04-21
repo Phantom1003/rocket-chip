@@ -34,22 +34,83 @@ class SCIEDecoderInterface extends Bundle {
 class SCIEDecoder extends Module {
   val io = IO(new SCIEDecoderInterface)
 
-  io.unpipelined  := false.B
-  io.pipelined    := true.B
+  io.unpipelined  := true.B
+  io.pipelined    := false.B
   io.multicycle   := false.B
 }
 
 class SCIEUnpipelinedInterface(xLen: Int) extends Bundle {
+  val valid = Input(Bool())
+  val kill = Input(Bool())
   val insn = Input(UInt(SCIE.iLen.W))
   val rs1 = Input(UInt(xLen.W))
   val rs2 = Input(UInt(xLen.W))
   val rd = Output(UInt(xLen.W))
+  val ready = Output(Bool())
 }
 
 class SCIEUnpipelined(xLen: Int) extends Module {
   val io = IO(new SCIEUnpipelinedInterface(xLen))
-  io.rd := 0.U
 
+  val csr_mcrmkeyl = WireInit(0.U(xLen.W))
+  val csr_mcrmkeyh = WireInit(0.U(xLen.W))
+  val csr_scrtkeyl = WireInit(0.U(xLen.W))
+  val csr_scrtkeyh = WireInit(0.U(xLen.W))
+  val csr_scrakeyl = WireInit(0.U(xLen.W))
+  val csr_scrakeyh = WireInit(0.U(xLen.W))
+  val csr_scrbkeyl = WireInit(0.U(xLen.W))
+  val csr_scrbkeyh = WireInit(0.U(xLen.W))
+  BoringUtils.addSink(csr_mcrmkeyl, "csr_mcrmkeyl")
+  BoringUtils.addSink(csr_mcrmkeyh, "csr_mcrmkeyh")
+  BoringUtils.addSink(csr_scrtkeyl, "csr_scrtkeyl")
+  BoringUtils.addSink(csr_scrtkeyh, "csr_scrtkeyh")
+  BoringUtils.addSink(csr_scrakeyl, "csr_scrakeyl")
+  BoringUtils.addSink(csr_scrakeyh, "csr_scrakeyh")
+  BoringUtils.addSink(csr_scrbkeyl, "csr_scrbkeyl")
+  BoringUtils.addSink(csr_scrbkeyh, "csr_scrbkeyh")
+
+  val pec_engine = Module(new Qarma.MultiCycle.QarmaEngine(max_round = 7))
+  pec_engine.input.bits.kill := io.kill
+  pec_engine.input.bits.text := io.rs1
+  pec_engine.input.bits.tweak := io.rs2
+  pec_engine.input.bits.actual_round := 7.U(3.W)
+  pec_engine.input.bits.encrypt := ~io.insn(25)
+  pec_engine.output.ready := true.B
+  val key_sel = io.insn(14, 12)
+  pec_engine.input.valid := io.valid
+
+  pec_engine.input.bits.keyh := MuxLookup(key_sel, csr_scrtkeyh, Seq(
+    "b000".U -> csr_scrtkeyh,
+    "b001".U -> csr_mcrmkeyh,
+    "b010".U -> csr_scrakeyh,
+    "b011".U -> csr_scrbkeyh
+  ))
+  pec_engine.input.bits.keyl := MuxLookup(key_sel, csr_scrtkeyl, Seq(
+    "b000".U -> csr_scrtkeyl,
+    "b001".U -> csr_mcrmkeyl,
+    "b010".U -> csr_scrakeyl,
+    "b011".U -> csr_scrbkeyl
+  ))
+
+  io.rd := pec_engine.output.bits.result
+  io.ready := pec_engine.output.valid
+}
+
+class SCIEPipelinedInterface(xLen: Int) extends Bundle {
+  val clock = Input(Clock())
+  val valid = Input(Bool())
+  val insn = Input(UInt(SCIE.iLen.W))
+  val rs1 = Input(UInt(xLen.W))
+  val rs2 = Input(UInt(xLen.W))
+  val rd = Output(UInt(xLen.W))
+  val done = Output(Bool())
+}
+
+class SCIEPipelined(xLen: Int) extends Module {
+  val io = IO(new SCIEPipelinedInterface(xLen))
+
+  io.rd := "hdeadbeef".U
+  io.done := false.B
   // val csr_mcrmkeyl = WireInit(0.U(xLen.W))
   // val csr_mcrmkeyh = WireInit(0.U(xLen.W))
   // val csr_scrtkeyl = WireInit(0.U(xLen.W))
@@ -74,7 +135,7 @@ class SCIEUnpipelined(xLen: Int) extends Module {
   // pec_engine.input.bits.encrypt := ~io.insn(25)
   // pec_engine.output.ready := true.B
   // val key_sel = io.insn(14, 12)
-  // pec_engine.input.valid := true.B
+  // pec_engine.input.valid := io.valid
 
   // pec_engine.input.bits.keyh := MuxLookup(key_sel, csr_scrtkeyh, Seq(
   //   "b000".U -> csr_scrtkeyh,
@@ -90,60 +151,5 @@ class SCIEUnpipelined(xLen: Int) extends Module {
   // ))
 
   // io.rd := pec_engine.output.bits.result
-}
-
-class SCIEPipelinedInterface(xLen: Int) extends Bundle {
-  val clock = Input(Clock())
-  val valid = Input(Bool())
-  val insn = Input(UInt(SCIE.iLen.W))
-  val rs1 = Input(UInt(xLen.W))
-  val rs2 = Input(UInt(xLen.W))
-  val rd = Output(UInt(xLen.W))
-  val done = Output(Bool())
-}
-
-class SCIEPipelined(xLen: Int) extends Module {
-  val io = IO(new SCIEPipelinedInterface(xLen))
-
-  val csr_mcrmkeyl = WireInit(0.U(xLen.W))
-  val csr_mcrmkeyh = WireInit(0.U(xLen.W))
-  val csr_scrtkeyl = WireInit(0.U(xLen.W))
-  val csr_scrtkeyh = WireInit(0.U(xLen.W))
-  val csr_scrakeyl = WireInit(0.U(xLen.W))
-  val csr_scrakeyh = WireInit(0.U(xLen.W))
-  val csr_scrbkeyl = WireInit(0.U(xLen.W))
-  val csr_scrbkeyh = WireInit(0.U(xLen.W))
-  BoringUtils.addSink(csr_mcrmkeyl, "csr_mcrmkeyl")
-  BoringUtils.addSink(csr_mcrmkeyh, "csr_mcrmkeyh")
-  BoringUtils.addSink(csr_scrtkeyl, "csr_scrtkeyl")
-  BoringUtils.addSink(csr_scrtkeyh, "csr_scrtkeyh")
-  BoringUtils.addSink(csr_scrakeyl, "csr_scrakeyl")
-  BoringUtils.addSink(csr_scrakeyh, "csr_scrakeyh")
-  BoringUtils.addSink(csr_scrbkeyl, "csr_scrbkeyl")
-  BoringUtils.addSink(csr_scrbkeyh, "csr_scrbkeyh")
-
-  val pec_engine = Module(new Qarma.SingleCycle.QarmaEngine(max_round = 7))
-  pec_engine.input.bits.text := io.rs1
-  pec_engine.input.bits.tweak := io.rs2
-  pec_engine.input.bits.actual_round := 7.U(3.W)
-  pec_engine.input.bits.encrypt := ~io.insn(25)
-  pec_engine.output.ready := true.B
-  val key_sel = io.insn(14, 12)
-  pec_engine.input.valid := io.valid
-
-  pec_engine.input.bits.keyh := MuxLookup(key_sel, csr_scrtkeyh, Seq(
-    "b000".U -> csr_scrtkeyh,
-    "b001".U -> csr_mcrmkeyh,
-    "b010".U -> csr_scrakeyh,
-    "b011".U -> csr_scrbkeyh
-  ))
-  pec_engine.input.bits.keyl := MuxLookup(key_sel, csr_scrtkeyl, Seq(
-    "b000".U -> csr_scrtkeyl,
-    "b001".U -> csr_mcrmkeyl,
-    "b010".U -> csr_scrakeyl,
-    "b011".U -> csr_scrbkeyl
-  ))
-
-  io.rd := pec_engine.output.bits.result
-  io.done := pec_engine.output.valid
+  // io.done := pec_engine.output.valid
 }
