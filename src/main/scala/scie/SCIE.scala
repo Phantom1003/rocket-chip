@@ -70,6 +70,18 @@ class SCIEUnpipelined(xLen: Int) extends Module {
   BoringUtils.addSink(csr_scrbkeyh, "csr_scrbkeyh")
 
   val pec_engine = Module(new Qarma.MultiCycle.QarmaEngine(max_round = 7))
+  val cache = Module(new Qarma.MultiCycle.QarmaCache(8, "Stack"))
+
+  cache.io.update := pec_engine.output.valid && io.valid
+  cache.io.cipher := Mux(~io.insn(25), io.rd, io.rs1)
+  cache.io.plain  := Mux(~io.insn(25), io.rs1, io.rd)
+  cache.io.tweak  := io.rs2
+  cache.io.keyh   := pec_engine.input.bits.keyh
+  cache.io.keyl   := pec_engine.input.bits.keyl
+  cache.io.text   := io.rs1
+  cache.io.encrypt := ~io.insn(25)
+
+  pec_engine.kill.valid := false.B// RegNext(cache.io.hit) && RegNext(io.valid)
   pec_engine.input.bits.kill := io.kill
   pec_engine.input.bits.text := io.rs1
   pec_engine.input.bits.tweak := io.rs2
@@ -77,7 +89,7 @@ class SCIEUnpipelined(xLen: Int) extends Module {
   pec_engine.input.bits.encrypt := ~io.insn(25)
   pec_engine.output.ready := true.B
   val key_sel = io.insn(14, 12)
-  pec_engine.input.valid := io.valid
+  pec_engine.input.valid := io.valid && !cache.io.hit
 
   pec_engine.input.bits.keyh := MuxLookup(key_sel, csr_scrtkeyh, Seq(
     "b000".U -> csr_scrtkeyh,
@@ -92,8 +104,8 @@ class SCIEUnpipelined(xLen: Int) extends Module {
     "b011".U -> csr_scrbkeyl
   ))
 
-  io.rd := pec_engine.output.bits.result
-  io.ready := pec_engine.output.valid
+  io.rd := Mux(cache.io.hit, cache.io.result, pec_engine.output.bits.result)
+  io.ready := pec_engine.output.valid || cache.io.hit
 }
 
 class SCIEPipelinedInterface(xLen: Int) extends Bundle {

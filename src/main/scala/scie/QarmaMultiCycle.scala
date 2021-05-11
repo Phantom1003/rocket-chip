@@ -5,6 +5,70 @@ import chisel3.util._
 
 import freechips.rocketchip.scie.Qarma._
 
+class QarmaCache(depth: Int = 8, policy: String = "Stack") extends Module {
+  // fully associative register file
+  val io = IO(new Bundle {
+    val update = Input(Bool())
+    // update bundle
+    val cipher = Input(UInt(64.W))
+    val plain  = Input(UInt(64.W))
+    val tweak  = Input(UInt(64.W))
+    val keyh   = Input(UInt(64.W))
+    val keyl   = Input(UInt(64.W))
+    // query bundle
+    val encrypt = Input(Bool())
+    val text    = Input(UInt(64.W))
+    val hit     = Output(Bool())
+    val result  = Output(UInt(64.W))
+  })
+
+  class CacheData extends Bundle {
+    val valid  = Output(Bool())
+    val cipher = Output(UInt(64.W))
+    val plain  = Output(UInt(64.W))
+    val tweak  = Output(UInt(64.W))
+    val keyh   = Output(UInt(64.W))
+    val keyl   = Output(UInt(64.W))
+  }
+
+  // --------------------------------------------- v - c -- p -- tk - key
+  val cache = RegInit(VecInit(Seq.fill(depth)(0.U((1 + 64 + 64 + 64 + 128).W))))
+  val wptr = RegInit(0.U(log2Ceil(depth).W))
+
+  assert(depth == 1 || depth == 2 || depth == 4 || depth == 8 || depth == 16)
+
+  // query
+  io.hit := false.B
+  io.result := Mux(io.encrypt, cache(0).asTypeOf(new CacheData).cipher, cache(0).asTypeOf(new CacheData).plain)
+  for (i <- 0 until depth) {
+    val data = cache(i).asTypeOf(new CacheData)
+    when (data.valid && io.tweak === data.tweak && io.keyh === data.keyh && io.keyl === data.keyl) {
+      when (io.encrypt && io.text === data.plain) {
+        io.hit := true.B
+        io.result := data.cipher
+        wptr := wptr - 1.U
+      }.elsewhen (!io.encrypt && io.text === data.cipher) {
+        io.hit := true.B
+        io.result := data.plain
+        wptr := wptr - 1.U
+      }
+    }
+  }
+
+  // update
+  when (io.update) {
+    wptr := wptr + 1.U
+    val new_data = WireInit(cache(0).asTypeOf(new CacheData))
+    new_data.valid := true.B
+    new_data.cipher := io.cipher
+    new_data.plain := io.plain
+    new_data.tweak := io.tweak
+    new_data.keyh := io.keyh
+    new_data.keyl := io.keyl
+    cache(wptr) := new_data.asUInt
+  }
+}
+
 class QarmaEngine(max_round: Int = 7) extends QarmaParamsIO {
 
   val last_keyh = Reg(UInt())
@@ -149,14 +213,17 @@ class QarmaEngine(max_round: Int = 7) extends QarmaParamsIO {
   }.elsewhen(state === s_busy) {
     input.ready := false.B
     output.valid := false.B
-    when(counter(1)) {
+    /*when(kill.valid) {
+      counter := 0.U
+      next_state := s_idle
+    }.else*/when(counter(1)) {
       counter := 0.U
       next_state := s_wait
     }.otherwise {
       counter := counter + 1.U
       next_state := s_busy
     }
-  }.otherwise {
+  }.otherwise { // s_wait
     next_state := Mux(output.ready, s_idle, s_wait)
     input.ready := Mux(output.ready, true.B, false.B)
     output.valid := Mux(last_op_valid, 
