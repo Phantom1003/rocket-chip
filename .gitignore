@@ -13,3 +13,6 @@ docs-target/
 /test_lib/
 /testbuild/
 rocketchip.jar
+
+.metals/
+.vscode/
