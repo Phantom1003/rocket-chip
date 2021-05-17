@@ -23,7 +23,6 @@ class QarmaCache(depth: Int = 8, policy: String = "Stack") extends Module {
   })
 
   class CacheData extends Bundle {
-    val valid  = Output(Bool())
     val cipher = Output(UInt(64.W))
     val plain  = Output(UInt(64.W))
     val tweak  = Output(UInt(64.W))
@@ -32,7 +31,7 @@ class QarmaCache(depth: Int = 8, policy: String = "Stack") extends Module {
   }
 
   // --------------------------------------------- v - c -- p -- tk - key
-  val cache = RegInit(VecInit(Seq.fill(depth)(0.U((1 + 64 + 64 + 64 + 128).W))))
+  val cache = RegInit(VecInit(Seq.fill(depth)("h8b6d63dfd6d250c4000000008020106e0000000081003fc000000000000000000000000000000000".U((64 + 64 + 64 + 128).W))))
   val wptr = RegInit(0.U(log2Ceil(depth).W))
 
   assert(depth == 1 || depth == 2 || depth == 4 || depth == 8 || depth == 16)
@@ -42,7 +41,7 @@ class QarmaCache(depth: Int = 8, policy: String = "Stack") extends Module {
   io.result := Mux(io.encrypt, cache(0).asTypeOf(new CacheData).cipher, cache(0).asTypeOf(new CacheData).plain)
   for (i <- 0 until depth) {
     val data = cache(i).asTypeOf(new CacheData)
-    when (data.valid && io.tweak === data.tweak && io.keyh === data.keyh && io.keyl === data.keyl) {
+    when (io.tweak === data.tweak && io.keyh === data.keyh && io.keyl === data.keyl) {
       when (io.encrypt && io.text === data.plain) {
         io.hit := true.B
         io.result := data.cipher
@@ -59,7 +58,6 @@ class QarmaCache(depth: Int = 8, policy: String = "Stack") extends Module {
   when (io.update) {
     wptr := wptr + 1.U
     val new_data = WireInit(cache(0).asTypeOf(new CacheData))
-    new_data.valid := true.B
     new_data.cipher := io.cipher
     new_data.plain := io.plain
     new_data.tweak := io.tweak
