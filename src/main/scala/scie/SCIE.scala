@@ -5,6 +5,7 @@ package freechips.rocketchip.scie
 import chisel3._
 import chisel3.util._
 import chisel3.util.experimental.BoringUtils
+import freechips.rocketchip.rocket.CSRs._
 
 /* Pointer Encryption Extension
  *          31    5 4  20  9   5 4 2 11  7 6     0
@@ -72,12 +73,29 @@ class SCIEUnpipelined(xLen: Int) extends Module {
   val pec_engine = Module(new Qarma.MultiCycle.QarmaEngine(max_round = 7))
   val cache = Module(new Qarma.MultiCycle.QarmaCache(8, "Stack"))
 
+  val key_sel = io.insn(14, 12)
+
+  // For sake of timing, decode CSR instructions here but not in CSR
+  val rst_key = io.insn(6, 0) === "b1110011".U && io.insn(13, 12) =/= "b00".U
+  val rst_sel = MuxLookup(io.insn(31, 20), "b111".U,
+    Seq(
+      mcrmkeyl.U -> "b001".U,
+      mcrmkeyh.U -> "b001".U,
+      scrtkeyl.U -> "b000".U,
+      scrtkeyh.U -> "b000".U,
+      scrakeyl.U -> "b010".U,
+      scrakeyh.U -> "b010".U,
+      scrbkeyl.U -> "b011".U,
+      scrbkeyh.U -> "b011".U
+    )
+  )
+
+  cache.io.flush  := rst_key
   cache.io.update := pec_engine.output.valid && io.valid
   cache.io.cipher := Mux(~io.insn(25), io.rd, io.rs1)
   cache.io.plain  := Mux(~io.insn(25), io.rs1, io.rd)
   cache.io.tweak  := io.rs2
-  cache.io.keyh   := pec_engine.input.bits.keyh
-  cache.io.keyl   := pec_engine.input.bits.keyl
+  cache.io.sel    := Mux(rst_key, rst_sel, key_sel)
   cache.io.text   := io.rs1
   cache.io.encrypt := ~io.insn(25)
 
@@ -88,7 +106,6 @@ class SCIEUnpipelined(xLen: Int) extends Module {
   pec_engine.input.bits.actual_round := 7.U(3.W)
   pec_engine.input.bits.encrypt := ~io.insn(25)
   pec_engine.output.ready := true.B
-  val key_sel = io.insn(14, 12)
   pec_engine.input.valid := io.valid && !cache.io.hit
 
   pec_engine.input.bits.keyh := MuxLookup(key_sel, csr_scrtkeyh, Seq(

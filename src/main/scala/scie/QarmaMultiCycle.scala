@@ -9,12 +9,12 @@ class QarmaCache(depth: Int = 8, policy: String = "Stack") extends Module {
   // fully associative register file
   val io = IO(new Bundle {
     val update = Input(Bool())
+    val flush  = Input(Bool())
     // update bundle
     val cipher = Input(UInt(64.W))
     val plain  = Input(UInt(64.W))
     val tweak  = Input(UInt(64.W))
-    val keyh   = Input(UInt(64.W))
-    val keyl   = Input(UInt(64.W))
+    val sel    = Input(UInt(3.W))
     // query bundle
     val encrypt = Input(Bool())
     val text    = Input(UInt(64.W))
@@ -26,12 +26,12 @@ class QarmaCache(depth: Int = 8, policy: String = "Stack") extends Module {
     val cipher = Output(UInt(64.W))
     val plain  = Output(UInt(64.W))
     val tweak  = Output(UInt(64.W))
-    val keyh   = Output(UInt(64.W))
-    val keyl   = Output(UInt(64.W))
+    val sel    = Output(UInt(3.W))
+    val valid  = Output(UInt(1.W))
   }
 
   // --------------------------------------------- v - c -- p -- tk - key
-  val cache = RegInit(VecInit(Seq.fill(depth)("h8b6d63dfd6d250c4000000008020106e0000000081003fc000000000000000000000000000000000".U((64 + 64 + 64 + 128).W))))
+  val cache = RegInit(VecInit(Seq.fill(depth)(0.U((64 + 64 + 64 + 3 + 1).W))))
   val wptr = RegInit(0.U(log2Ceil(depth).W))
 
   assert(depth == 1 || depth == 2 || depth == 4 || depth == 8 || depth == 16)
@@ -41,7 +41,7 @@ class QarmaCache(depth: Int = 8, policy: String = "Stack") extends Module {
   io.result := Mux(io.encrypt, cache(0).asTypeOf(new CacheData).cipher, cache(0).asTypeOf(new CacheData).plain)
   for (i <- 0 until depth) {
     val data = cache(i).asTypeOf(new CacheData)
-    when (io.tweak === data.tweak && io.keyh === data.keyh && io.keyl === data.keyl) {
+    when (io.tweak === data.tweak && io.sel === data.sel && data.valid.asBool) {
       when (io.encrypt && io.text === data.plain) {
         io.hit := true.B
         io.result := data.cipher
@@ -55,14 +55,23 @@ class QarmaCache(depth: Int = 8, policy: String = "Stack") extends Module {
   }
 
   // update
-  when (io.update) {
+  when (io.flush) {
+    for (i <- 0 until depth) {
+      val data = cache(i).asTypeOf(new CacheData)
+      val new_data = WireInit(cache(i).asTypeOf(new CacheData))
+      when (io.sel === data.sel) {
+        new_data.valid := false.B
+        cache(i) := new_data.asUInt
+      }
+    }
+  }.elsewhen (io.update) {
     wptr := wptr + 1.U
     val new_data = WireInit(cache(0).asTypeOf(new CacheData))
     new_data.cipher := io.cipher
     new_data.plain := io.plain
     new_data.tweak := io.tweak
-    new_data.keyh := io.keyh
-    new_data.keyl := io.keyl
+    new_data.sel := io.sel
+    new_data.valid := true.B
     cache(wptr) := new_data.asUInt
   }
 }
