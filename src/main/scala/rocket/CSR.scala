@@ -1113,15 +1113,53 @@ class CSRFile(
       }
     }
 
+
+    val flcsr = WireInit(false.B)
+    val flSelect = WireInit("b111".U(3.W))
     /* Pointer Encryption Extension */
-    when (decoded_addr(CSRs.mcrmkeyl)) { reg_mcrmkeyl := wdata }
-    when (decoded_addr(CSRs.mcrmkeyh)) { reg_mcrmkeyh := wdata }
-    when (decoded_addr(CSRs.scrtkeyl)) { reg_scrtkeyl := wdata }
-    when (decoded_addr(CSRs.scrtkeyh)) { reg_scrtkeyh := wdata }
-    when (decoded_addr(CSRs.scrakeyl)) { reg_scrakeyl := wdata }
-    when (decoded_addr(CSRs.scrakeyh)) { reg_scrakeyh := wdata }
-    when (decoded_addr(CSRs.scrbkeyl)) { reg_scrbkeyl := wdata }
-    when (decoded_addr(CSRs.scrbkeyh)) { reg_scrbkeyh := wdata }
+    when (decoded_addr(CSRs.mcrmkeyl)) { 
+      reg_mcrmkeyl := wdata 
+      flcsr := true.B
+      flSelect := "b001".U
+    }
+    when (decoded_addr(CSRs.mcrmkeyh)) { 
+      reg_mcrmkeyh := wdata
+      flcsr := true.B 
+      flSelect := "b001".U
+    }
+    when (decoded_addr(CSRs.scrtkeyl)) { 
+      reg_scrtkeyl := wdata 
+      flcsr := true.B
+      flSelect := "b000".U
+    }
+    when (decoded_addr(CSRs.scrtkeyh)) { 
+      reg_scrtkeyh := wdata 
+      flcsr := true.B
+      flSelect := "b000".U
+    }
+    when (decoded_addr(CSRs.scrakeyl)) { 
+      reg_scrakeyl := wdata 
+      flcsr := true.B
+      flSelect := "b010".U
+    }
+    when (decoded_addr(CSRs.scrakeyh)) { 
+      reg_scrakeyh := wdata 
+      flcsr := true.B
+      flSelect := "b010".U
+    }
+    when (decoded_addr(CSRs.scrbkeyl)) { 
+      reg_scrbkeyl := wdata 
+      flcsr := true.B
+      flSelect := "b011".U
+    }
+    when (decoded_addr(CSRs.scrbkeyh)) { 
+      reg_scrbkeyh := wdata 
+      flcsr := true.B
+      flSelect := "b011".U
+    }
+
+    BoringUtils.addSource(flcsr, "csr_flcsr")
+    BoringUtils.addSource(flSelect, "csr_flselect")
 
     for ((io, csr, reg) <- (io.customCSRs, customCSRs, reg_custom).zipped) {
       val mask = csr.mask.U(xLen.W)

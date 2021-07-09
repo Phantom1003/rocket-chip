@@ -28,6 +28,8 @@ class PointerEncryptionMultiCycleImp(outer: PointerEncryption)(implicit p: Param
   val csr_scrakeyh = WireInit(0.U(xLen.W))
   val csr_scrbkeyl = WireInit(0.U(xLen.W))
   val csr_scrbkeyh = WireInit(0.U(xLen.W))
+  val flcsr = WireInit(false.B)
+  val flSelect = WireInit(0.U(3.W))
 
   BoringUtils.addSink(csr_mcrmkeyl, "csr_mcrmkeyl")
   BoringUtils.addSink(csr_mcrmkeyh, "csr_mcrmkeyh")
@@ -37,6 +39,9 @@ class PointerEncryptionMultiCycleImp(outer: PointerEncryption)(implicit p: Param
   BoringUtils.addSink(csr_scrakeyh, "csr_scrakeyh")
   BoringUtils.addSink(csr_scrbkeyl, "csr_scrbkeyl")
   BoringUtils.addSink(csr_scrbkeyh, "csr_scrbkeyh")
+
+  BoringUtils.addSink(flcsr, "csr_flcsr")
+  BoringUtils.addSink(flSelect, "csr_flselect")
 
   val pec_engine = Module(new QarmaMultiCycle(7))
   val cache = Module(new QarmaCache(8, "Stack"))
@@ -51,13 +56,14 @@ class PointerEncryptionMultiCycleImp(outer: PointerEncryption)(implicit p: Param
   val keyl = RegInit(0.U(xLen.W))
   val encrypt = RegInit(false.B)
   val valid = RegInit(false.B)
+  val keySelect = Cat(io.cmd.bits.inst.xd, io.cmd.bits.inst.xs1, io.cmd.bits.inst.xs2)
 
+  cache.io.sel    := Mux(flcsr, flSelect, keySelect)
+  cache.io.flush  := flcsr
   cache.io.update := pec_engine.output.valid && valid
   cache.io.cipher := Mux(encrypt, result, text)
   cache.io.plain  := Mux(encrypt, text, result)
   cache.io.tweak  := tweak
-  cache.io.keyh   := keyh
-  cache.io.keyl   := keyl
   cache.io.text   := text
   cache.io.encrypt := encrypt
   pec_engine.input.bits.actual_round  := 7.U(3.W)
@@ -74,7 +80,6 @@ class PointerEncryptionMultiCycleImp(outer: PointerEncryption)(implicit p: Param
     valid := true.B
     busy := true.B
     rd := io.cmd.bits.inst.rd
-    val keySelect = Cat(io.cmd.bits.inst.xd, io.cmd.bits.inst.xs1, io.cmd.bits.inst.xs2)
     keyh := MuxLookup(keySelect, csr_scrtkeyh, Seq(
       "b000".U -> csr_scrtkeyh,
       "b001".U -> csr_mcrmkeyh,
