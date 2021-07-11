@@ -373,6 +373,9 @@ class QarmaCache(depth: Int = 8, policy: String = "Stack") extends Module {
     new_data.valid := 1.U
     cache(wptr) := new_data.asUInt
   }
+
+  // TODO delete
+  io.hit := false.B
 }
 
 class QarmaSingleCysle(max_round: Int = 7) extends QarmaParamsIO {

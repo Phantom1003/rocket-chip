@@ -58,6 +58,7 @@ class PointerEncryptionMultiCycleImp(outer: PointerEncryption)(implicit p: Param
   val valid = RegInit(false.B)
   val keySelect = Cat(io.cmd.bits.inst.xd, io.cmd.bits.inst.xs1, io.cmd.bits.inst.xs2)
 
+  // TODO begin
   cache.io.sel    := Mux(flcsr, flSelect, keySelect)
   cache.io.flush  := flcsr
   cache.io.update := pec_engine.output.valid && valid
@@ -66,13 +67,24 @@ class PointerEncryptionMultiCycleImp(outer: PointerEncryption)(implicit p: Param
   cache.io.tweak  := tweak
   cache.io.text   := text
   cache.io.encrypt := encrypt
+  // TODO end
   pec_engine.input.bits.actual_round  := 7.U(3.W)
-  pec_engine.input.bits.keyh  := keyh
-  pec_engine.input.bits.keyl  := keyl
-  pec_engine.input.bits.text  := text
-  pec_engine.input.bits.tweak := tweak
-  pec_engine.input.bits.encrypt := encrypt
-  pec_engine.input.valid   := valid && !cache.io.hit
+  pec_engine.input.bits.keyh  := Mux(io.cmd.fire(), MuxLookup(keySelect, csr_scrtkeyh, Seq(
+      "b000".U -> csr_scrtkeyh,
+      "b001".U -> csr_mcrmkeyh,
+      "b010".U -> csr_scrakeyh,
+      "b011".U -> csr_scrbkeyh
+    )), keyh)
+  pec_engine.input.bits.keyl  := Mux(io.cmd.fire(), MuxLookup(keySelect, csr_scrtkeyl, Seq(
+      "b000".U -> csr_scrtkeyl,
+      "b001".U -> csr_mcrmkeyl,
+      "b010".U -> csr_scrakeyl,
+      "b011".U -> csr_scrbkeyl
+    )), keyl)
+  pec_engine.input.bits.text  := Mux(io.cmd.fire(), io.cmd.bits.rs1, text)
+  pec_engine.input.bits.tweak := Mux(io.cmd.fire(), io.cmd.bits.rs2, tweak)
+  pec_engine.input.bits.encrypt := Mux(io.cmd.fire(), ~io.cmd.bits.inst.funct(0), encrypt)
+  pec_engine.input.valid   := io.cmd.fire() && !cache.io.hit
 
   pec_engine.output.ready  := pec_engine.output.valid
 
@@ -123,11 +135,12 @@ class PointerEncryptionMultiCycleImp(outer: PointerEncryption)(implicit p: Param
   } 
 
   io.resp.bits.rd   := rd
-  io.resp.bits.data := result
+  io.resp.bits.data := Mux(io.cmd.fire() && cache.io.hit, cache.io.result, Mux(pec_engine.output.valid
+, pec_engine.output.bits.result, result))
 
   io.cmd.ready  := !busy
-  io.busy       := busy
-  io.resp.valid := resp
+  io.busy       := busy && !pec_engine.output.valid
+  io.resp.valid := resp || (io.cmd.fire() && cache.io.hit) || pec_engine.output.valid
 
   // Disable unused interfaces
   io.interrupt      := false.B
