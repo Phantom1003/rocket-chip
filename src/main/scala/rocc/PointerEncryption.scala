@@ -55,13 +55,12 @@ class PointerEncryptionMultiCycleImp(outer: PointerEncryption)(implicit p: Param
   val keyh = RegInit(0.U(xLen.W))
   val keyl = RegInit(0.U(xLen.W))
   val encrypt = RegInit(false.B)
-  val valid = RegInit(false.B)
   val keySelect = Cat(io.cmd.bits.inst.xd, io.cmd.bits.inst.xs1, io.cmd.bits.inst.xs2)
 
   // TODO begin
   cache.io.sel    := Mux(flcsr, flSelect, keySelect)
   cache.io.flush  := flcsr
-  cache.io.update := pec_engine.output.valid && valid
+  cache.io.update := pec_engine.output.valid
   cache.io.cipher := Mux(encrypt, result, text)
   cache.io.plain  := Mux(encrypt, text, result)
   cache.io.tweak  := tweak
@@ -69,27 +68,26 @@ class PointerEncryptionMultiCycleImp(outer: PointerEncryption)(implicit p: Param
   cache.io.encrypt := encrypt
   // TODO end
   pec_engine.input.bits.actual_round  := 7.U(3.W)
-  pec_engine.input.bits.keyh  := Mux(io.cmd.fire(), MuxLookup(keySelect, csr_scrtkeyh, Seq(
+  pec_engine.input.bits.keyh  := MuxLookup(keySelect, csr_scrtkeyh, Seq(
       "b000".U -> csr_scrtkeyh,
       "b001".U -> csr_mcrmkeyh,
       "b010".U -> csr_scrakeyh,
       "b011".U -> csr_scrbkeyh
-    )), keyh)
-  pec_engine.input.bits.keyl  := Mux(io.cmd.fire(), MuxLookup(keySelect, csr_scrtkeyl, Seq(
+    ))
+  pec_engine.input.bits.keyl  := MuxLookup(keySelect, csr_scrtkeyl, Seq(
       "b000".U -> csr_scrtkeyl,
       "b001".U -> csr_mcrmkeyl,
       "b010".U -> csr_scrakeyl,
       "b011".U -> csr_scrbkeyl
-    )), keyl)
-  pec_engine.input.bits.text  := Mux(io.cmd.fire(), io.cmd.bits.rs1, text)
-  pec_engine.input.bits.tweak := Mux(io.cmd.fire(), io.cmd.bits.rs2, tweak)
-  pec_engine.input.bits.encrypt := Mux(io.cmd.fire(), ~io.cmd.bits.inst.funct(0), encrypt)
+    ))
+  pec_engine.input.bits.text  := io.cmd.bits.rs1
+  pec_engine.input.bits.tweak := io.cmd.bits.rs2
+  pec_engine.input.bits.encrypt := ~io.cmd.bits.inst.funct(0)
   pec_engine.input.valid   := io.cmd.fire() && !cache.io.hit
 
   pec_engine.output.ready  := pec_engine.output.valid
 
   when(io.cmd.fire()){
-    valid := true.B
     busy := true.B
     rd := io.cmd.bits.inst.rd
     keyh := MuxLookup(keySelect, csr_scrtkeyh, Seq(
@@ -111,7 +109,7 @@ class PointerEncryptionMultiCycleImp(outer: PointerEncryption)(implicit p: Param
     printf("[cmd fire] text %x tweak %x\n", io.cmd.bits.rs1, io.cmd.bits.rs2)
   }
 
-  when (valid && cache.io.hit) {
+  when (io.cmd.fire() && cache.io.hit) {
     result := cache.io.result
     resp := true.B
   }.elsewhen (pec_engine.output.valid) {
@@ -121,14 +119,9 @@ class PointerEncryptionMultiCycleImp(outer: PointerEncryption)(implicit p: Param
     printf("[pec valid] res %x\n", pec_engine.output.bits.result)
   }
 
-  when (valid) {
-    valid := false.B    
-  }
-
   when(io.resp.fire()){
     resp := false.B
-    busy := false.B      
-    valid := false.B
+    busy := false.B
     result := 0.U
     
     printf("[resp fire]\n")
