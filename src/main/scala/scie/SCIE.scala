@@ -98,6 +98,7 @@ class SCIEUnpipelined(xLen: Int) extends Module {
   cache.io.sel    := Mux(rst_key, rst_sel, key_sel)
   cache.io.text   := io.rs1
   cache.io.encrypt := ~io.insn(25)
+  cache.io.ren    := io.valid && !pec_engine.output.valid
 
   pec_engine.kill.valid := false.B// RegNext(cache.io.hit) && RegNext(io.valid)
   pec_engine.input.bits.kill := io.kill

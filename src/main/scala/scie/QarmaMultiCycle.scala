@@ -8,6 +8,7 @@ import freechips.rocketchip.scie.Qarma._
 class QarmaCache(depth: Int = 8, policy: String = "Stack") extends Module {
   // fully associative register file
   val io = IO(new Bundle {
+    val ren    = Input(Bool())
     val update = Input(Bool())
     val flush  = Input(Bool())
     // update bundle
@@ -41,7 +42,7 @@ class QarmaCache(depth: Int = 8, policy: String = "Stack") extends Module {
   io.result := Mux(io.encrypt, cache(0).asTypeOf(new CacheData).cipher, cache(0).asTypeOf(new CacheData).plain)
   for (i <- 0 until depth) {
     val data = cache(i).asTypeOf(new CacheData)
-    when (io.tweak === data.tweak && io.sel === data.sel && data.valid.asBool) {
+    when (io.tweak === data.tweak && io.sel === data.sel && data.valid.asBool && io.ren) {
       when (io.encrypt && io.text === data.plain) {
         io.hit := true.B
         io.result := data.cipher
