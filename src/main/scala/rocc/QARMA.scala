@@ -315,6 +315,7 @@ class QarmaCache(depth: Int = 8, policy: String = "Stack") extends Module {
     val tweak  = Input(UInt(64.W))
     val sel    = Input(UInt(3.W))
     // query bundle
+    val ren     = Input(Bool())
     val encrypt = Input(Bool())
     val text    = Input(UInt(64.W))
     val hit     = Output(Bool())
@@ -340,7 +341,7 @@ class QarmaCache(depth: Int = 8, policy: String = "Stack") extends Module {
   io.result := Mux(io.encrypt, cache(0).asTypeOf(new CacheData).cipher, cache(0).asTypeOf(new CacheData).plain)
   for (i <- 0 until depth) {
     val data = cache(i).asTypeOf(new CacheData)
-    when (io.tweak === data.tweak && io.sel === data.sel && data.valid.asBool) {
+    when (io.ren && io.tweak === data.tweak && io.sel === data.sel && data.valid.asBool) {
       when (io.encrypt && io.text === data.plain) {
         io.hit := true.B
         io.result := data.cipher
@@ -373,9 +374,6 @@ class QarmaCache(depth: Int = 8, policy: String = "Stack") extends Module {
     new_data.valid := 1.U
     cache(wptr) := new_data.asUInt
   }
-
-  // TODO delete
-  io.hit := false.B
 }
 
 class QarmaSingleCysle(max_round: Int = 7) extends QarmaParamsIO {

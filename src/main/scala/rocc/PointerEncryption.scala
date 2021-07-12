@@ -52,20 +52,20 @@ class PointerEncryptionMultiCycleImp(outer: PointerEncryption)(implicit p: Param
   val result = RegInit(0.U(xLen.W))
   val text  = RegInit(0.U(xLen.W))
   val tweak = RegInit(0.U(xLen.W))
-  val keyh = RegInit(0.U(xLen.W))
-  val keyl = RegInit(0.U(xLen.W))
+  val ksel  = RegInit(0.U(3.W))
   val encrypt = RegInit(false.B)
   val keySelect = Cat(io.cmd.bits.inst.xd, io.cmd.bits.inst.xs1, io.cmd.bits.inst.xs2)
 
   // TODO begin
-  cache.io.sel    := Mux(flcsr, flSelect, keySelect)
+  cache.io.ren    := io.cmd.fire()
+  cache.io.sel    := Mux(flcsr, flSelect, Mux(io.cmd.fire(), keySelect, ksel))
   cache.io.flush  := flcsr
   cache.io.update := pec_engine.output.valid
-  cache.io.cipher := Mux(encrypt, result, text)
-  cache.io.plain  := Mux(encrypt, text, result)
-  cache.io.tweak  := tweak
-  cache.io.text   := text
-  cache.io.encrypt := encrypt
+  cache.io.cipher := Mux(encrypt, pec_engine.output.bits.result, text)
+  cache.io.plain  := Mux(encrypt, text, pec_engine.output.bits.result)
+  cache.io.tweak  := Mux(pec_engine.output.valid, tweak, io.cmd.bits.rs2)
+  cache.io.text   := io.cmd.bits.rs1
+  cache.io.encrypt := ~io.cmd.bits.inst.funct(0)
   // TODO end
   pec_engine.input.bits.actual_round  := 7.U(3.W)
   pec_engine.input.bits.keyh  := MuxLookup(keySelect, csr_scrtkeyh, Seq(
@@ -90,21 +90,10 @@ class PointerEncryptionMultiCycleImp(outer: PointerEncryption)(implicit p: Param
   when(io.cmd.fire()){
     busy := true.B
     rd := io.cmd.bits.inst.rd
-    keyh := MuxLookup(keySelect, csr_scrtkeyh, Seq(
-      "b000".U -> csr_scrtkeyh,
-      "b001".U -> csr_mcrmkeyh,
-      "b010".U -> csr_scrakeyh,
-      "b011".U -> csr_scrbkeyh
-    ))
-    keyl := MuxLookup(keySelect, csr_scrtkeyl, Seq(
-      "b000".U -> csr_scrtkeyl,
-      "b001".U -> csr_mcrmkeyl,
-      "b010".U -> csr_scrakeyl,
-      "b011".U -> csr_scrbkeyl
-    ))
     text  := io.cmd.bits.rs1
     tweak := io.cmd.bits.rs2
     encrypt := ~io.cmd.bits.inst.funct(0)
+    ksel := keySelect
 
     printf("[cmd fire] text %x tweak %x\n", io.cmd.bits.rs1, io.cmd.bits.rs2)
   }
