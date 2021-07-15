@@ -44,7 +44,7 @@ class PointerEncryptionMultiCycleImp(outer: PointerEncryption)(implicit p: Param
   BoringUtils.addSink(flSelect, "csr_flselect")
 
   val pec_engine = Module(new QarmaMultiCycle(7))
-  val cache = Module(new QarmaCache(8, "Stack"))
+  val cache = Module(new QarmaCache(16, "Stack"))
 
   val rd = RegInit(0.U(5.W))
   val busy = RegInit(false.B)
@@ -88,7 +88,7 @@ class PointerEncryptionMultiCycleImp(outer: PointerEncryption)(implicit p: Param
   pec_engine.output.ready  := pec_engine.output.valid
 
   when(io.cmd.fire()){
-    busy := true.B
+    busy := Mux(cache.io.hit, false.B, true.B)
     rd := io.cmd.bits.inst.rd
     text  := io.cmd.bits.rs1
     tweak := io.cmd.bits.rs2
@@ -116,7 +116,7 @@ class PointerEncryptionMultiCycleImp(outer: PointerEncryption)(implicit p: Param
     printf("[resp fire]\n")
   } 
 
-  io.resp.bits.rd   := rd
+  io.resp.bits.rd   := Mux(io.cmd.fire() && cache.io.hit, io.cmd.bits.inst.rd, rd)
   io.resp.bits.data := Mux(io.cmd.fire() && cache.io.hit, cache.io.result, Mux(pec_engine.output.valid
 , pec_engine.output.bits.result, result))
 
