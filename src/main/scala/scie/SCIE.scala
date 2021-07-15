@@ -71,7 +71,7 @@ class SCIEUnpipelined(xLen: Int) extends Module {
   BoringUtils.addSink(csr_scrbkeyh, "csr_scrbkeyh")
 
   val pec_engine = Module(new Qarma.MultiCycle.QarmaEngine(max_round = 7))
-  val cache = Module(new Qarma.MultiCycle.QarmaCache(8, "Stack"))
+  val cache = Module(new Qarma.MultiCycle.QarmaCache(16, "Stack"))
 
   val key_sel = io.insn(14, 12)
 
