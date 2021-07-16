@@ -12,6 +12,7 @@ class WithDebugSBASystem extends freechips.rocketchip.subsystem.WithDebugSBA
 class WithDebugAPB extends freechips.rocketchip.subsystem.WithDebugAPB
 
 class BaseConfig extends Config(
+  new WithPECRocc ++
   new WithDefaultMemPort() ++
   new WithDefaultMMIOPort() ++
   // new WithDefaultSlavePort() ++
@@ -22,7 +23,6 @@ class BaseConfig extends Config(
 )
 
 class DefaultConfig extends Config(
-  new WithPECRocc ++
   new WithNBigCores(1) ++
   new WithCoherentBusTopology ++ 
   new BaseConfig
