@@ -76,31 +76,41 @@ class SCIEUnpipelined(xLen: Int) extends Module {
 
   val key_sel = io.insn(14, 12)
   
-  def truncate_and_extend(start: UInt, end: UInt, src: UInt): UInt = {
+  def truncate_and_extend(): UInt = {
     val result = WireDefault("hdeadbeef".U(64.W))
     for(i <- 0 to 7) {
       for(j <- i to 7) {
-        when(start === i.U && end === j.U) {
-          result := Cat(Fill(8 * (7 - j), src(8 * (j + 1) - 1)), src(8 * (j + 1) - 1, 8 * i), Fill(8 * i, src(8 * i)))
+        when(io.insn(28, 26) === i.U && io.insn(31, 29) === j.U) {
+          if(i == 0 || j == 7) {
+            if(i == 0 && j == 7) {
+              result := io.rs1(8 * (j + 1) - 1, 8 * i)
+            } else if (i == 0) {
+              result := Cat(Fill(8 * (7 - j), io.rs1(8 * (j + 1) - 1)), io.rs1(8 * (j + 1) - 1, 8 * i))
+            } else {
+              result := Cat(io.rs1(8 * (j + 1) - 1, 8 * i), Fill(8 * i, io.rs1(8 * i)))
+            }
+          } else {
+            result := Cat(Fill(8 * (7 - j), io.rs1(8 * (j + 1) - 1)), io.rs1(8 * (j + 1) - 1, 8 * i), Fill(8 * i, io.rs1(8 * i)))
+          }
         }
       }
     }
     result
   }
 
-  def check_integrity(start: UInt, end: UInt, src: UInt): Bool = {
+  def check_integrity(): Bool = {
     val result = WireDefault(true.B)
     for (i <- 1 to 7) {
-      when(start === i.U) {
-        val intergrity = Mux(src(8 * i), src(8 * i - 1, 0).andR, !(src(8 * i - 1, 0).orR))
+      when(io.insn(28, 26) === i.U) {
+        val integrity = Mux(io.rd(8 * i), io.rd(8 * i - 1, 0).andR, !(io.rd(8 * i - 1, 0).orR))
         when (!integrity) {
           result := false.B
         }
       }
     }
     for (i <- 0 to 6) {
-      when(end === i.U) {
-        val integrity = Mux(src(8 * (i + 1) - 1), src(63, 8 * (i + 1)).andR, !(src(63, 8 * (i + 1)).orR))
+      when(io.insn(31, 29) === i.U) {
+        val integrity = Mux(io.rd(8 * (i + 1) - 1), io.rd(63, 8 * (i + 1)).andR, !(io.rd(63, 8 * (i + 1)).orR))
         when(!integrity) {
           result := false.B
         }
@@ -127,16 +137,16 @@ class SCIEUnpipelined(xLen: Int) extends Module {
   cache.io.flush  := rst_key
   cache.io.update := pec_engine.output.valid && io.valid
   cache.io.cipher := Mux(~io.insn(25), io.rd, io.rs1)
-  cache.io.plain  := Mux(~io.insn(25), truncate_and_extend(io.inst(28, 26), io.inst(31, 29), io.rs1), io.rd)
+  cache.io.plain  := Mux(~io.insn(25), truncate_and_extend(), io.rd)
   cache.io.tweak  := io.rs2
   cache.io.sel    := Mux(rst_key, rst_sel, key_sel)
-  cache.io.text   := Mux(~io.insn(25), truncate_and_extend(io.inst(28, 26), io.inst(31, 29), io.rs1), io.rs1)
+  cache.io.text   := Mux(~io.insn(25), truncate_and_extend(), io.rs1)
   cache.io.encrypt := ~io.insn(25)
   cache.io.ren    := io.valid && !pec_engine.output.valid
 
   pec_engine.kill.valid := false.B// RegNext(cache.io.hit) && RegNext(io.valid)
   pec_engine.input.bits.kill := io.kill
-  pec_engine.input.bits.text := Mux(~io.insn(25), truncate_and_extend(io.inst(28, 26), io.inst(31, 29), io.rs1), io.rs1)
+  pec_engine.input.bits.text := Mux(~io.insn(25), truncate_and_extend(), io.rs1)
   pec_engine.input.bits.tweak := io.rs2
   pec_engine.input.bits.actual_round := 7.U(3.W)
   pec_engine.input.bits.encrypt := ~io.insn(25)
@@ -158,7 +168,7 @@ class SCIEUnpipelined(xLen: Int) extends Module {
 
   io.rd := Mux(cache.io.hit, cache.io.result, pec_engine.output.bits.result)
   io.ready := pec_engine.output.valid || cache.io.hit
-  io.expt := io.valid && io.ready && io.insn(25) && (check_integrity(io.inst(28, 26), io.inst(31, 29), io.rd) === false.B)
+  io.expt := io.valid && io.ready && io.insn(25) && (check_integrity() === false.B)
 }
 
 class SCIEPipelinedInterface(xLen: Int) extends Bundle {
