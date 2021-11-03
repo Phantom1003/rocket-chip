@@ -227,6 +227,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val mem_scie_unpipelined = Reg(Bool())
   val mem_scie_pipelined = Reg(Bool())
   val mem_reg_wdata = Reg(Bits())
+  val mem_reg_integrity_exception = Reg(Bool())
   val mem_reg_rs2 = Reg(Bits())
   val mem_br_taken = Reg(Bool())
   val take_pc_mem = Wire(Bool())
@@ -389,14 +390,14 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   alu.io.in1 := ex_op1.asUInt
 
   val kill_qarma = Wire(Bool())
-  val (ex_scie_unpipelined_wdata, ex_scie_unpipelined_ready) = if (!rocketParams.useSCIE) (0.U, true.B) else {
+  val (ex_scie_unpipelined_wdata, ex_scie_unpipelined_ready, ex_scie_unpipelined_integrity_exception) = if (!rocketParams.useSCIE) (0.U, true.B, false.B) else {
     val u = Module(new SCIEUnpipelined(xLen))
     u.io.valid := ex_scie_unpipelined && ex_reg_valid
     u.io.kill := kill_qarma
     u.io.insn := ex_reg_inst
     u.io.rs1 := ex_rs(0)
     u.io.rs2 := ex_rs(1)
-    (u.io.rd, u.io.ready)
+    (u.io.rd, u.io.ready, u.io.expt)
   }
   val (mem_scie_pipelined_wdata, // @note instance pipelined scie
        mem_scie_pipelined_valid, 
@@ -535,7 +536,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
 
   mem_reg_valid := !ctrl_killx
   mem_reg_replay := !take_pc_mem_wb && replay_ex
-  mem_reg_xcpt := !ctrl_killx && ex_xcpt
+  mem_reg_xcpt := !ctrl_killx && (ex_xcpt || ex_scie_unpipelined_integrity_exception)
   mem_reg_xcpt_interrupt := !take_pc_mem_wb && ex_reg_xcpt_interrupt
 
   // on pipeline flushes, cause mem_npc to hold the sequential npc, which
@@ -555,7 +556,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     mem_reg_slow_bypass := ex_slow_bypass
     mem_reg_wphit := ex_reg_wphit
 
-    mem_reg_cause := ex_cause
+    // use illegal instruction instead
+    mem_reg_cause := Mux(ex_scie_unpipelined_integrity_exception, Causes.illegal_instruction, ex_cause)
     mem_reg_inst := ex_reg_inst
     mem_reg_raw_inst := ex_reg_raw_inst
     mem_reg_mem_size := ex_reg_mem_size
