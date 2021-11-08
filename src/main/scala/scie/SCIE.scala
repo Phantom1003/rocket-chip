@@ -85,12 +85,12 @@ class SCIEUnpipelined(xLen: Int) extends Module {
             if(i == 0 && j == 7) {
               result := io.rs1(8 * (j + 1) - 1, 8 * i)
             } else if (i == 0) {
-              result := Cat(Fill(8 * (7 - j), io.rs1(8 * (j + 1) - 1)), io.rs1(8 * (j + 1) - 1, 8 * i))
+              result := Cat(Fill(8 * (7 - j), 0.U), io.rs1(8 * (j + 1) - 1, 8 * i))
             } else {
-              result := Cat(io.rs1(8 * (j + 1) - 1, 8 * i), Fill(8 * i, io.rs1(8 * i)))
+              result := Cat(io.rs1(8 * (j + 1) - 1, 8 * i), Fill(8 * i, 0.U))
             }
           } else {
-            result := Cat(Fill(8 * (7 - j), io.rs1(8 * (j + 1) - 1)), io.rs1(8 * (j + 1) - 1, 8 * i), Fill(8 * i, io.rs1(8 * i)))
+            result := Cat(Fill(8 * (7 - j), 0.U), io.rs1(8 * (j + 1) - 1, 8 * i), Fill(8 * i, 0.U))
           }
         }
       }
@@ -102,7 +102,7 @@ class SCIEUnpipelined(xLen: Int) extends Module {
     val result = WireDefault(true.B)
     for (i <- 1 to 7) {
       when(io.insn(28, 26) === i.U) {
-        val integrity = Mux(io.rd(8 * i), io.rd(8 * i - 1, 0).andR, !(io.rd(8 * i - 1, 0).orR))
+        val integrity = io.rd(8 * i - 1, 0).andR || !(io.rd(8 * i - 1, 0).orR)
         when (!integrity) {
           result := false.B
         }
@@ -110,7 +110,7 @@ class SCIEUnpipelined(xLen: Int) extends Module {
     }
     for (i <- 0 to 6) {
       when(io.insn(31, 29) === i.U) {
-        val integrity = Mux(io.rd(8 * (i + 1) - 1), io.rd(63, 8 * (i + 1)).andR, !(io.rd(63, 8 * (i + 1)).orR))
+        val integrity = io.rd(63, 8 * (i + 1)).andR || !(io.rd(63, 8 * (i + 1)).orR)
         when(!integrity) {
           result := false.B
         }
