@@ -116,6 +116,13 @@ class SCIEUnpipelined(xLen: Int) extends Module {
         }
       }
     }
+    // for(i <- 0 to 7) {
+    //   for(j <- i to 7) {
+    //     when(io.insn(28, 26) === i.U && io.insn(31, 29) === j.U) {
+    //       result := io.rd(8 * (j + 1) - 1, 8 * i) === 0.U || io.rd(8 * (j + 1) - 1, 8 * i).andR
+    //     }
+    //   }
+    // }
     result
   }
 
