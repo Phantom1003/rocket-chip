@@ -42,15 +42,15 @@ class QarmaCache(depth: Int = 8, policy: String = "Stack") extends Module {
   io.result := Mux(io.encrypt, cache(0).asTypeOf(new CacheData).cipher, cache(0).asTypeOf(new CacheData).plain)
   for (i <- 0 until depth) {
     val data = cache(i).asTypeOf(new CacheData)
-    when (io.tweak === data.tweak && io.sel === data.sel && data.valid.asBool && io.ren) {
+    when (io.tweak === data.tweak && io.sel === data.sel && data.valid.asBool) {
       when (io.encrypt && io.text === data.plain) {
         io.hit := true.B
         io.result := data.cipher
-        wptr := wptr - 1.U
+        when (io.ren) { wptr := wptr - 1.U }
       }.elsewhen (!io.encrypt && io.text === data.cipher) {
         io.hit := true.B
         io.result := data.plain
-        wptr := wptr - 1.U
+        when (io.ren) { wptr := wptr - 1.U }
       }
     }
   }

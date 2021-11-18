@@ -77,7 +77,7 @@ class SCIEUnpipelined(xLen: Int) extends Module {
   val key_sel = io.insn(14, 12)
   
   def truncate_and_extend(): UInt = {
-    val result = WireDefault(io.rs1(8 * (j + 1) - 1, 8 * i))
+    val result = WireDefault(io.rs1)
     for(i <- 0 to 7) {
       for(j <- i to 7) {
         when(io.insn(28, 26) === i.U && io.insn(31, 29) === j.U) {
